@@ -25,8 +25,8 @@ digitsfordt           EQUATE(8)                        !Base 36 digits for the d
   IF NOT pDate
     GetLocalTime(sysdt)                                !Better accuracy than CLOCK() at the hundredths level
     pDate = DATE(sysdt.wMonth,sysdt.wDay,sysdt.wYear)  !Convert to clarion standard date and time
-    pTime = sysdt.wHour * 360000 + sysdt.wMinute * 6000 + sysdt.wSecond * 100 + sysdt.wMilliseconds / 10 + 1 !60*60*100, 60*100
-  .
+    pTime = sysdt.wHour * 360000 + sysdt.wMinute * 6000 + sysdt.wSecond * 100 + sysdt.wMilliseconds * .10 + 1 !60*60*100, 60*100
+  END
   i64Assign(dt64,pDate)                                !dt64 = pDate
   i64Assign(tmp64,8640000) ; i64Mult(dt64,tmp64,dt64)  !dt64 *= 8640000  (24*60*60*100)
   i64Assign(tmp64,pTime)   ; i64Add(dt64,tmp64,dt64)   !dt64 += pTime
