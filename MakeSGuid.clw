@@ -6,9 +6,13 @@
     MODULE('')
       i64Mod(*INT64 op1, *INT64 op2, *INT64 dest),UNSIGNED,PROC,RAW,NAME('Cla$i64Mod')
       GetLocalTime(*_SYSTEMTIME),RAW,PASCAL
-    END
+      BCryptGenRandom(HANDLE hAlgorithm,*STRING pbBuffer,UNSIGNED cbBuffer,UNSIGNED dwFlags),RAW,PASCAL
+    END    
 MakeSGuid   PROCEDURE(LONG pLength = 16,LONG pDate = 0,LONG pTime = 0),STRING
   END
+
+  PRAGMA('link(bcryptrandom.lib)')
+BCRYPT_USE_SYSTEM_PREFERRED_RNG EQUATE (2)
 
 MakeSGuid           PROCEDURE(LONG pLength = 16,LONG pDate = 0,LONG pTime = 0)!,STRING
 sysdt                 LIKE(_SYSTEMTIME),AUTO           !To get the system local date and time
@@ -19,6 +23,8 @@ guid                  STRING(32),AUTO                  !The returned id
 idx                   LONG,AUTO                        !Index for string slicing
 base36                STRING('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ') !Lookup table for base 36 encoding
 digitsfordt           EQUATE(8)                        !Base 36 digits for the date/time part. Enough for dates until year 2694
+randomData            STRING(24) !Random bits from Windows
+randomByte            BYTE,DIM(SIZE(randomData)),OVER(randomData)
   CODE
   IF pLength < digitsfordt THEN pLength = digitsfordt. !Check por valid length
   IF pLength > SIZE(guid) THEN pLength = SIZE(guid).
@@ -36,7 +42,11 @@ digitsfordt           EQUATE(8)                        !Base 36 digits for the d
     guid[idx] = base36[ mod64.lo + 1 ]                 !Get the encoded the digit. mod64.lo is a ULONG with the lower part of the int64
     i64Div(dt64,tmp64,dt64)                            !dt64 /= 36
   END
-  LOOP idx = digitsfordt + 1 TO pLength                !Fill the rest of the string with random digits
-    guid[idx] = base36[ RANDOM(1,36) ]
+  IF pLength > digitsfordt
+    BCryptGenRandom(0,randomData,pLength - digitsfordt,BCRYPT_USE_SYSTEM_PREFERRED_RNG) !Get crypto random bytes
+    LOOP idx = digitsfordt + 1 TO pLength              !Fill the rest of the string with random digits
+      guid[idx] = base36 [ randomByte[ idx - digitsfordt ] % 36 + 1 ] !Convert random byte to random 0-35. The distribution is not uniform; 
+                                                                      !0-3 have 12.5% over-representation, probably not significant in this use case.
+    END
   END
   RETURN guid[1 : pLength]                             !Return clipped id
