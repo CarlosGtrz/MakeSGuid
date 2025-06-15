@@ -4,9 +4,9 @@
   MAP  
     INCLUDE('i64.inc'),ONCE
     MODULE('')
-      i64Mod(*INT64 op1, *INT64 op2, *INT64 dest),UNSIGNED,PROC,RAW,NAME('Cla$i64Mod')
-      GetLocalTime(*_SYSTEMTIME),RAW,PASCAL
-      BCryptGenRandom(HANDLE hAlgorithm,*STRING pbBuffer,UNSIGNED cbBuffer,UNSIGNED dwFlags),RAW,PASCAL
+      i64Mod(*INT64 op1, *INT64 op2, *INT64 dest),UNSIGNED,PROC,RAW,NAME('Cla$i64Mod'),DLL(1)
+      GetLocalTime(*_SYSTEMTIME),RAW,PASCAL,DLL(1)
+      BCryptGenRandom(HANDLE hAlgorithm,*STRING pbBuffer,UNSIGNED cbBuffer,UNSIGNED dwFlags),UNSIGNED,PROC,RAW,PASCAL,DLL(1)
     END    
 MakeSGuid   PROCEDURE(LONG pLength = 16,LONG pDate = 0,LONG pTime = 0),STRING
   END
@@ -23,7 +23,7 @@ guid                  STRING(32),AUTO                  !The returned id
 idx                   LONG,AUTO                        !Index for string slicing
 base36                STRING('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ') !Lookup table for base 36 encoding
 digitsfordt           EQUATE(8)                        !Base 36 digits for the date/time part. Enough for dates until year 2694
-randomData            STRING(24) !Random bits from Windows
+randomData            STRING(24),AUTO                  !Random bits from Windows
 randomByte            BYTE,DIM(SIZE(randomData)),OVER(randomData)
   CODE
   IF pLength < digitsfordt THEN pLength = digitsfordt. !Check por valid length
