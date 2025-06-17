@@ -1,5 +1,6 @@
   MEMBER
-
+  PRAGMA('link(bcryptrandom.lib)')
+BCRYPT_USE_SYSTEM_PREFERRED_RNG EQUATE (2)
   INCLUDE('svapi.inc'),ONCE
   MAP  
     INCLUDE('i64.inc'),ONCE
@@ -11,42 +12,41 @@
 MakeSGuid   PROCEDURE(LONG pLength = 16,LONG pDate = 0,LONG pTime = 0),STRING
   END
 
-  PRAGMA('link(bcryptrandom.lib)')
-BCRYPT_USE_SYSTEM_PREFERRED_RNG EQUATE (2)
-
 MakeSGuid           PROCEDURE(LONG pLength = 16,LONG pDate = 0,LONG pTime = 0)!,STRING
-sysdt                 LIKE(_SYSTEMTIME),AUTO           !To get the system local date and time
-dt64                  LIKE(INT64),AUTO                 !To store date/time in hundredths of seconds since December 28 1800
-tmp64                 LIKE(INT64),AUTO                 !Temporary variable to use with i64 operations
-mod64                 LIKE(INT64),AUTO                 !To store dt % 36
-guid                  STRING(32),AUTO                  !The returned id
-idx                   LONG,AUTO                        !Index for string slicing
-base36                STRING('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ') !Lookup table for base 36 encoding
-digitsfordt           EQUATE(8)                        !Base 36 digits for the date/time part. Enough for dates until year 2694
-randomData            STRING(24),AUTO                  !Random bits from Windows
-randomByte            BYTE,DIM(SIZE(randomData)),OVER(randomData)
+systemTime            LIKE(_SYSTEMTIME),AUTO           !System date/time
+hundredthsPerDay      GROUP;LONG(8640000);LONG;END     !24*60*60*100 (one day in hundredths of a second)
+dayInt64              LIKE(INT64),OVER(hundredthsPerDay) !As int64
+base36Constant        GROUP;LONG(36);LONG;END          !Base 36
+base36Int64           LIKE(INT64),OVER(base36Constant) !As int64
+timestampInt64        LIKE(INT64),AUTO                 !Date/time in hundredths of a second since Dec 28, 1800
+timeInt64             LIKE(INT64),AUTO                 !Time value
+modResult             LIKE(INT64),AUTO                 !Modulo result
+result                STRING(32),AUTO                  !Generated ID
+position              LONG,AUTO                        !String position
+base36Digits          STRING('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ') !Base 36 encoding table
+timestampDigits       EQUATE(8)                        !Base 36 digits for date/time (valid until 2694)
+randomBytes           STRING(24),AUTO                  !Crypto random bytes
+randomByteArray       BYTE,DIM(SIZE(randomBytes)),OVER(randomBytes) !As byte array
   CODE
-  IF pLength < digitsfordt THEN pLength = digitsfordt. !Check por valid length
-  IF pLength > SIZE(guid) THEN pLength = SIZE(guid).
+  IF pLength < timestampDigits THEN pLength = timestampDigits. !Minimum length check
+  IF pLength > SIZE(result) THEN pLength = SIZE(result).!Maximum length check
   IF NOT pDate
-    GetLocalTime(sysdt)                                !Better accuracy than CLOCK() at the hundredths level
-    pDate = DATE(sysdt.wMonth,sysdt.wDay,sysdt.wYear)  !Convert to clarion standard date and time
-    pTime = sysdt.wHour * 360000 + sysdt.wMinute * 6000 + sysdt.wSecond * 100 + sysdt.wMilliseconds * .10 + 1 !60*60*100, 60*100
+    GetLocalTime(systemTime)                            !Get system time
+    pDate = DATE(systemTime.wMonth,systemTime.wDay,systemTime.wYear)  !Convert to Clarion date
+    pTime = systemTime.wHour * 360000 + systemTime.wMinute * 6000 + systemTime.wSecond * 100 + systemTime.wMilliseconds * .10 + 1 !Convert to hundredths of a second
   END
-  i64Assign(dt64,pDate)                                !dt64 = pDate
-  i64Assign(tmp64,8640000) ; i64Mult(dt64,tmp64,dt64)  !dt64 *= 8640000  (24*60*60*100)
-  i64Assign(tmp64,pTime)   ; i64Add(dt64,tmp64,dt64)   !dt64 += pTime
-  i64Assign(tmp64,36)                                  !To use inside the loop
-  LOOP idx = digitsfordt TO 1 BY -1                    !Convert to base 36, starting with last digit
-    i64Mod(dt64,tmp64,mod64)                           !mod64 = dt64 % 36
-    guid[idx] = base36[ mod64.lo + 1 ]                 !Get the encoded the digit. mod64.lo is a ULONG with the lower part of the int64
-    i64Div(dt64,tmp64,dt64)                            !dt64 /= 36
+  i64Assign(timestampInt64,pDate)                       !timestampInt64 = pDate
+  i64Mult(timestampInt64,dayInt64,timestampInt64)       !timestampInt64 *= day
+  i64Assign(timeInt64,pTime) ; i64Add(timestampInt64,timeInt64,timestampInt64) !timestampInt64 += pTime
+  LOOP position = timestampDigits TO 1 BY -1            !Convert to base 36 (reverse order)
+    i64Mod(timestampInt64,base36Int64,modResult)        !modResult = timestampInt64 % 36
+    result[position] = base36Digits[ modResult.lo + 1 ] !Get encoded digit
+    i64Div(timestampInt64,base36Int64,timestampInt64)   !timestampInt64 /= 36
   END
-  IF pLength > digitsfordt
-    BCryptGenRandom(0,randomData,pLength - digitsfordt,BCRYPT_USE_SYSTEM_PREFERRED_RNG) !Get crypto random bytes
-    LOOP idx = digitsfordt + 1 TO pLength              !Fill the rest of the string with random digits
-      guid[idx] = base36 [ randomByte[ idx - digitsfordt ] % 36 + 1 ] !Convert random byte to random 0-35. The distribution is not uniform; 
-                                                                      !0-3 have 12.5% over-representation, probably not significant in this use case.
+  IF pLength > timestampDigits
+    BCryptGenRandom(0,randomBytes,pLength - timestampDigits,BCRYPT_USE_SYSTEM_PREFERRED_RNG) !Get random bytes
+    LOOP position = timestampDigits + 1 TO pLength      !Add random digits
+      result[position] = base36Digits[ ( randomByteArray[ position - timestampDigits ] % 36 ) + 1 ] !Convert to base 36 (slight bias acceptable)
     END
   END
-  RETURN guid[1 : pLength]                             !Return clipped id
+  RETURN result[1 : pLength]                            !Return clipped ID
